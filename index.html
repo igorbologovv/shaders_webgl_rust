@@ -28,47 +28,36 @@
         var canvas;
 
         function setup_canvas() {
-            let canvas = document.getElementById("my_canvas");
+            canvas = document.getElementById("my_canvas");
 
             console.log("Setting up the canvas");
             gl = canvas.getContext("webgl");
             if (!gl) {
-                console.log("Failed to get WebGL context. ");
-                return;function renderLoop() {
-    let currentTime = Date.now();
-    let elapsedTime = (currentTime - startTime) / 1000.0; // Convert milliseconds to seconds
-
-    // Pass the time value to the shader
-    gl.uniform1f(gl.getUniformLocation(shaderProgram, 'time'), elapsedTime);
-
-    // Render your scene here...
-
-    requestAnimationFrame(renderLoop);
-}
-
-// Start the rendering loop
-renderLoop();
+                console.log("Failed to get WebGL context.");
+                return;
             }
 
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
-            // Clear the color buffer with specified clear color
             gl.clear(gl.COLOR_BUFFER_BIT);
 
             const vertex_buffer = gl.createBuffer();
-            gl.bindBuffer(0x8892, vertex_buffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
         }
 
         // This is used to decode strings passed from Wasm to Javascript.
         const decoder = new TextDecoder();
-
+        let wasm;
         var wasm_memory;
-
+        var shaderProgram;
+        var elapsedTime;
+        var startTime = Date.now();
         // Store Javascript objects so they can later be accessed by Rust code.
         var js_objects = [null];
 
         // All of these are passed to the Wasm as an external function.
         var importObject = {
             env: {
+               
                 setup_canvas: setup_canvas,
                 create_buffer: function () {
                     return js_objects.push(gl.createBuffer()) - 1;
@@ -106,6 +95,7 @@ renderLoop();
                 },
                 use_program: function (program) {
                     gl.useProgram(js_objects[program]);
+                    shaderProgram = js_objects[program];
                 },
                 get_attrib_location: function (program, pointer, length) {
                     const string_data = new Uint8Array(wasm_memory.buffer, pointer, length);
@@ -124,13 +114,17 @@ renderLoop();
                 clear: function (gl_enum) {
                     gl.clear(gl_enum);
                 },
+                update_vertex_positions: function (time) {
+                    wasm.exports.update_vertex_positions(elapsedTime);
+                },
                 draw_elements: function (mode, count, type, offset) {
                     gl.drawElements(mode, count, type, offset);
                 },
+
             }
         };
 
-        // This is hardcoded to pull from the debug directory, which obviously won't work if you build release.
+        // Fetch the Wasm file and instantiate the WebAssembly module
         fetch('target/wasm32-unknown-unknown/debug/hello_triangle_wasm_rust.wasm').then(response =>
             response.arrayBuffer()
         ).then(bytes =>
@@ -138,28 +132,17 @@ renderLoop();
         ).then(results => {
             wasm_memory = results.instance.exports.memory;
 
+            // Capture the wasm object
+            wasm = results.instance.exports;
+
             // Call our start function.
-            results.instance.exports.start();
+            wasm.start();
+
+            // Start the rendering loop
+            
         });
 
-        // Add this variable to keep track of the time
-let startTime = Date.now();
-
-// Inside your rendering loop, update the time uniform
-function renderLoop() {
-    let currentTime = Date.now();
-    let elapsedTime = (currentTime - startTime) / 1000.0; // Convert milliseconds to seconds
-
-    // Pass the time value to the shader
-    gl.uniform1f(gl.getUniformLocation(shaderProgram, 'time'), elapsedTime);
-
-    // Render your scene here...
-
-    requestAnimationFrame(renderLoop);
-}
-
-// Start the rendering loop
-renderLoop();
+        // Modify the rendering loop function to accept wasm as a parameter
     </script>
 </body>
 </html>

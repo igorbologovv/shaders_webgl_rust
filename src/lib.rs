@@ -110,10 +110,42 @@ pub extern "C" fn start() {
             GLEnum::UnsignedShort,
             0,
         );
+        update_vertex_positions(0.1);
     }
 }
 
 // A few of the external functions we'll wrap so that we can use them in a more Rusty way.
+
+// Define a function to update vertex positions
+
+pub fn update_vertex_positions(time: f32) {
+    // Define the dimensions of the net
+    let rows = 10;
+    let cols = 10;
+    let spacing = 1.0 / (cols - 1) as f32;
+
+    // Generate the points for the net
+    let mut net_vertices = Vec::new();
+    for i in 0..rows {
+        for j in 0..cols {
+            let x = -0.5 + j as f32 * spacing;
+            let y = 0.5 - i as f32 * spacing;
+            let z = 0.0;
+
+            // Update y-coordinate based on sine wave
+            let offset = (time + x) * 2.0; // Adjust speed and magnitude of the wave here
+            let sine_wave = (offset).sin() * 0.1; // Adjust amplitude of the wave here
+            let animated_y = y + sine_wave;
+
+            net_vertices.push(x);
+            net_vertices.push(animated_y);
+            net_vertices.push(z);
+        }
+    }
+
+    // Update the vertex buffer with the new positions
+    buffer_data_f32(GLEnum::ArrayBuffer, &net_vertices, GLEnum::StaticDraw);
+}
 
 pub fn shader_source(shader: JSObject, source: &str) {
     unsafe { imported::shader_source(shader, source.as_ptr() as *const c_void, source.len()) }
@@ -158,6 +190,7 @@ mod imported {
     use super::*;
 
     extern "C" {
+
         pub fn setup_canvas();
         pub fn create_buffer() -> JSObject;
         pub fn bind_buffer(target: GLEnum, gl_object: JSObject);
@@ -196,6 +229,7 @@ mod imported {
         pub fn enable_vertex_attrib_array(index: GLUint);
         pub fn clear_color(r: f32, g: f32, b: f32, a: f32);
         pub fn clear(mask: GLEnum);
+        pub fn update_vertex_positions(time: f32);
         pub fn draw_elements(mode: GLEnum, count: GLsizei, _type: GLEnum, offset: GLintptr);
     }
 }
