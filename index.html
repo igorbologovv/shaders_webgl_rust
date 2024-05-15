@@ -1,148 +1,60 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebGL Canvas</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #222;
-        }
-        canvas {
-            border: 2px solid #444;
-        }
-    </style>
-</head>
-<body>
-    <canvas width="570" height="570" id="my_canvas"></canvas>
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+  </head>
+  <body>
+    <!-- Note the usage of `type=module` here as this is an ES6 module -->
+    <script type="module">
+      // Use ES module import syntax to import functionality from the module
+      // that we have compiled.
+      //
+      // Note that the `default` import is an initialization function which
+      // will "boot" the module and make it ready to use. Currently browsers
+      // don't support natively imported WebAssembly as an ES module, but
+      // eventually the manual initialization won't be required!
+      import init, {add}  from './pkg/webgl_with_bindgen.js';
 
-    <script>
-        var gl;
-        var canvas;
+      async function run() {
+        // First up we need to actually load the wasm file, so we use the
+        // default export to inform it where the wasm file is located on the
+        // server, and then we wait on the returned promise to wait for the
+        // wasm to be loaded.
+        //
+        // It may look like this: `await init('./pkg/without_a_bundler_bg.wasm');`,
+        // but there is also a handy default inside `init` function, which uses
+        // `import.meta` to locate the wasm file relatively to js file.
+        //
+        // Note that instead of a string you can also pass in any of the
+        // following things:
+        //
+        // * `WebAssembly.Module`
+        //
+        // * `ArrayBuffer`
+        //
+        // * `Response`
+        //
+        // * `Promise` which returns any of the above, e.g. `fetch("./path/to/wasm")`
+        //
+        // This gives you complete control over how the module is loaded
+        // and compiled.
+        //
+        // Also note that the promise, when resolved, yields the wasm module's
+        // exports which is the same as importing the `*_bg` module in other
+        // modes
+        await init();
 
-        function setup_canvas() {
-            canvas = document.getElementById("my_canvas");
+        // And afterwards we can use all the functionality defined in wasm.
+        const result = add(1, 2);
+        start();
+        console.log("All is good");
+        if (result !== 3)
+          throw new Error("wasm addition doesn't work!");
+      }
 
-            console.log("Setting up the canvas");
-            gl = canvas.getContext("webgl");
-            if (!gl) {
-                console.log("Failed to get WebGL context.");
-                return;
-            }
-
-            gl.clearColor(0.0, 0.0, 0.0, 1.0);
-            gl.clear(gl.COLOR_BUFFER_BIT);
-
-            const vertex_buffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
-        }
-
-        // This is used to decode strings passed from Wasm to Javascript.
-        const decoder = new TextDecoder();
-        let wasm;
-        var wasm_memory;
-        var shaderProgram;
-        var elapsedTime;
-        var startTime = Date.now();
-        // Store Javascript objects so they can later be accessed by Rust code.
-        var js_objects = [null];
-
-        // All of these are passed to the Wasm as an external function.
-        var importObject = {
-            env: {
-               
-                setup_canvas: setup_canvas,
-                create_buffer: function () {
-                    return js_objects.push(gl.createBuffer()) - 1;
-                },
-                bind_buffer: function (gl_enum, id) {
-                    gl.bindBuffer(gl_enum, js_objects[id]);
-                },
-                buffer_data_f32: function (target, pointer, length, usage) {
-                    const data = new Float32Array(wasm_memory.buffer, pointer, length);
-                    gl.bufferData(target, data, usage);
-                },
-                buffer_data_u16: function (target, pointer, length, usage) {
-                    const data = new Uint16Array(wasm_memory.buffer, pointer, length);
-                    gl.bufferData(target, data, usage);
-                },
-                create_shader: function (gl_enum) {
-                    return js_objects.push(gl.createShader(gl_enum)) - 1;
-                },
-                compile_shader: function (shader) {
-                    gl.compileShader(js_objects[shader]);
-                },
-                shader_source: function (shader, pointer, length) {
-                    const string_data = new Uint8Array(wasm_memory.buffer, pointer, length);
-                    const shader_string = decoder.decode(string_data);
-                    gl.shaderSource(js_objects[shader], shader_string);
-                },
-                create_program: function () {
-                    return js_objects.push(gl.createProgram()) - 1;
-                },
-                attach_shader: function (program, shader) {
-                    gl.attachShader(js_objects[program], js_objects[shader]);
-                },
-                link_program: function (program) {
-                    gl.linkProgram(js_objects[program]);
-                },
-                use_program: function (program) {
-                    gl.useProgram(js_objects[program]);
-                    shaderProgram = js_objects[program];
-                },
-                get_attrib_location: function (program, pointer, length) {
-                    const string_data = new Uint8Array(wasm_memory.buffer, pointer, length);
-                    const string = decoder.decode(string_data);
-                    return gl.getAttribLocation(js_objects[program], string);
-                },
-                vertex_attrib_pointer: function (index, size, type, normalized, stride, offset) {
-                    gl.vertexAttribPointer(index, size, type, normalized, stride, offset);
-                },
-                enable_vertex_attrib_array: function (index) {
-                    gl.enableVertexAttribArray(index)
-                },
-                clear_color: function (r, g, b, a) {
-                    gl.clearColor(r, g, b, a);
-                },
-                clear: function (gl_enum) {
-                    gl.clear(gl_enum);
-                },
-                update_vertex_positions: function (time) {
-                    wasm.exports.update_vertex_positions(elapsedTime);
-                },
-                draw_elements: function (mode, count, type, offset) {
-                    gl.drawElements(mode, count, type, offset);
-                },
-
-            }
-        };
-
-        // Fetch the Wasm file and instantiate the WebAssembly module
-        fetch('target/wasm32-unknown-unknown/debug/hello_triangle_wasm_rust.wasm').then(response =>
-            response.arrayBuffer()
-        ).then(bytes =>
-            WebAssembly.instantiate(bytes, importObject)
-        ).then(results => {
-            wasm_memory = results.instance.exports.memory;
-
-            // Capture the wasm object
-            wasm = results.instance.exports;
-
-            // Call our start function.
-            wasm.start();
-
-            // Start the rendering loop
-            
-        });
-
-        // Modify the rendering loop function to accept wasm as a parameter
+      run();
     </script>
-</body>
+    <body>
+             <canvas id="canvas" height="150" width="150"></canvas>
+    </body>
+  </body>
 </html>
