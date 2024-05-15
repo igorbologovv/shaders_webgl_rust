@@ -114,9 +114,7 @@
                 clear: function (gl_enum) {
                     gl.clear(gl_enum);
                 },
-                update_vertex_positions: function (time) {
-                    wasm.exports.update_vertex_positions(elapsedTime);
-                },
+
                 draw_elements: function (mode, count, type, offset) {
                     gl.drawElements(mode, count, type, offset);
                 },

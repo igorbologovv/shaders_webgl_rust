@@ -110,7 +110,7 @@ pub extern "C" fn start() {
             GLEnum::UnsignedShort,
             0,
         );
-        update_vertex_positions(0.1);
+        //imported::update_vertex_positions(0.1);
     }
 }
 
@@ -229,7 +229,7 @@ mod imported {
         pub fn enable_vertex_attrib_array(index: GLUint);
         pub fn clear_color(r: f32, g: f32, b: f32, a: f32);
         pub fn clear(mask: GLEnum);
-        pub fn update_vertex_positions(time: f32);
+        //pub fn update_vertex_positions(time: f32);
         pub fn draw_elements(mode: GLEnum, count: GLsizei, _type: GLEnum, offset: GLintptr);
     }
 }
