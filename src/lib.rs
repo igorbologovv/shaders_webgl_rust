@@ -164,7 +164,6 @@ pub fn add(a: u32, b: u32) -> u32 {
 //         let rows = 10;
 //         let cols = 10;
 //         let spacing = 1.0 / (cols - 1) as f32;
-
 //         // Generate the points for the net
 //         let mut net_vertices = Vec::new();
 //         for i in 0..rows {
@@ -177,7 +176,6 @@ pub fn add(a: u32, b: u32) -> u32 {
 //                 net_vertices.push(z);
 //             }
 //         }
-
 //         // Define indices for the net
 //         let mut net_indices = Vec::new();
 //         for i in 0..(rows - 1) {
