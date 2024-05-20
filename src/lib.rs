@@ -1,11 +1,14 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext, WebGlProgram, WebGlShader};
+use wasm_bindgen::JsCast;
+use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader};
 
 #[wasm_bindgen(start)]
-pub fn start() -> Result<(), JsValue> {
+fn start() -> Result<(), JsValue> {
     let document = web_sys::window().unwrap().document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
-    let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>()?;
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
 
     let context = canvas
         .get_context("webgl2")?
@@ -16,9 +19,16 @@ pub fn start() -> Result<(), JsValue> {
         &context,
         WebGl2RenderingContext::VERTEX_SHADER,
         r##"#version 300 es
+
         in vec4 position;
+        uniform float u_time;
+
         void main() {
-            gl_Position = position;
+            float amplitude = 0.1;
+            vec4 pos = position;
+            pos.x += sin(pos.y * 10.0 + u_time) * amplitude;
+            pos.y += sin(pos.x * 10.0 + u_time) * amplitude;
+            gl_Position = pos;
         }
         "##,
     )?;
@@ -27,8 +37,10 @@ pub fn start() -> Result<(), JsValue> {
         &context,
         WebGl2RenderingContext::FRAGMENT_SHADER,
         r##"#version 300 es
+
         precision highp float;
         out vec4 outColor;
+
         void main() {
             outColor = vec4(1, 1, 1, 1);
         }
@@ -37,7 +49,8 @@ pub fn start() -> Result<(), JsValue> {
     let program = link_program(&context, &vert_shader, &frag_shader)?;
     context.use_program(Some(&program));
 
-    let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
+    let grid_size = 10;
+    let vertices = generate_grid_vertices(grid_size);
 
     let position_attribute_location = context.get_attrib_location(&program, "position");
     let buffer = context.create_buffer().ok_or("Failed to create buffer")?;
@@ -45,6 +58,7 @@ pub fn start() -> Result<(), JsValue> {
 
     unsafe {
         let positions_array_buf_view = js_sys::Float32Array::view(&vertices);
+
         context.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
             &positions_array_buf_view,
@@ -70,15 +84,74 @@ pub fn start() -> Result<(), JsValue> {
     context.bind_vertex_array(Some(&vao));
 
     let vert_count = (vertices.len() / 3) as i32;
-    draw(&context, vert_count);
+    let u_time_location = context.get_uniform_location(&program, "u_time");
+
+    animate(Rc::new(context), vert_count, u_time_location, 0.0);
 
     Ok(())
 }
 
-fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
+fn animate(
+    context: Rc<WebGl2RenderingContext>,
+    vert_count: i32,
+    u_time_location: Option<web_sys::WebGlUniformLocation>,
+    mut time: f32,
+) {
+    let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
+    let g = f.clone();
+
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        time += 0.01;
+
+        context.uniform1f(u_time_location.as_ref(), time);
+        draw_grid(&context, vert_count);
+
+        web_sys::window()
+            .unwrap()
+            .request_animation_frame(f.borrow().as_ref().unwrap().as_ref().unchecked_ref())
+            .unwrap();
+    }) as Box<dyn FnMut()>));
+
+    web_sys::window()
+        .unwrap()
+        .request_animation_frame(g.borrow().as_ref().unwrap().as_ref().unchecked_ref())
+        .unwrap();
+}
+
+fn draw_grid(context: &WebGl2RenderingContext, vert_count: i32) {
     context.clear_color(0.0, 0.0, 0.0, 1.0);
     context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
-    context.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
+
+    context.draw_arrays(WebGl2RenderingContext::LINES, 0, vert_count);
+}
+
+pub fn generate_grid_vertices(grid_size: i32) -> Vec<f32> {
+    let mut vertices = Vec::new();
+
+    let step = 2.0 / grid_size as f32;
+    let mut position = -1.0;
+
+    for _ in 0..=grid_size {
+        // Vertical lines
+        vertices.push(position);
+        vertices.push(-1.0);
+        vertices.push(0.0);
+        vertices.push(position);
+        vertices.push(1.0);
+        vertices.push(0.0);
+
+        // Horizontal lines
+        vertices.push(-1.0);
+        vertices.push(position);
+        vertices.push(0.0);
+        vertices.push(1.0);
+        vertices.push(position);
+        vertices.push(0.0);
+
+        position += step;
+    }
+
+    vertices
 }
 
 pub fn compile_shader(
@@ -113,6 +186,7 @@ pub fn link_program(
     let program = context
         .create_program()
         .ok_or_else(|| String::from("Unable to create shader object"))?;
+
     context.attach_shader(&program, vert_shader);
     context.attach_shader(&program, frag_shader);
     context.link_program(&program);
